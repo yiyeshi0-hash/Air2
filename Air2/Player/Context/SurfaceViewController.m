@@ -1037,6 +1037,9 @@ CGPoint lastVirtualMousePoint = {0, 0};
 - (void)viewDidLoad
 {
     [super viewDidLoad];
+    NSLog(@"[LAUNCH-PROBE] ===== SurfaceViewController.viewDidLoad BEGIN =====");
+    fprintf(stderr, "\n[LAUNCH-PROBE] ===== SurfaceViewController.viewDidLoad BEGIN =====\n");
+    fflush(stderr);
     [A2Logger info:@"Boot" message:@"[0] SurfaceViewController.viewDidLoad 开始"];
     [A2Logger info:@"Boot" message:[NSString stringWithFormat:@"      metadata 键: %@",
         [[self.metadata allKeys] componentsJoinedByString:@","] ?: @"(nil)"]];
@@ -1757,6 +1760,7 @@ static int A2RequiredJavaVersionForMCVersion(NSString *verName) {
 - (void)launchMinecraft {
     // ★ 最原始的探针：直接 fprintf 到 stderr，不经过 A2Logger。
     //   如果连这行都看不到，说明这个方法压根没被调用。
+    NSLog(@"[LAUNCH-PROBE] launchMinecraft ENTERED");
     fprintf(stderr, "\n[LAUNCH-PROBE] launchMinecraft ENTERED tid=%d\n",
             (int)pthread_self());
     fflush(stderr);

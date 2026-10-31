@@ -278,18 +278,38 @@ void UIKit_launchMinecraftSurfaceVC(UIWindow* window, NSDictionary* metadata) {
     if (acctId != nil) {
         setPrefObject(@"internal.selected_account", acctId);
     }
+    // ★ [LAUNCH-PROBE] 探针：直接写 stderr，确认走到这里
+    NSLog(@"[LAUNCH-PROBE] UIKit_launchMinecraftSurfaceVC ENTER metadata=%@", metadata ? @"有" : @"nil");
+    fprintf(stderr, "\n[LAUNCH-PROBE] UIKit_launchMinecraftSurfaceVC ENTER metadata=%s\n",
+            metadata ? "有" : "nil");
+    fflush(stderr);
+
     dispatch_async(dispatch_get_main_queue(), ^{
+        fprintf(stderr, "[LAUNCH-PROBE] 主线程开始换根\n");
+        fflush(stderr);
+
         tmpRootVC = window.rootViewController;
-        [UIView animateWithDuration:0.2 animations:^{
-            window.alpha = 0;
-        } completion:^(BOOL b){
-            [window resignKeyWindow];
-            window.alpha = 1;
-            window.rootViewController = [[SurfaceViewController alloc] initWithMetadata:metadata];
-            [window makeKeyAndVisible];
-            // ★ [GAME-LANDSCAPE] 游戏曲面已接管根 ⇒ 再确认一次锁（幂等）：与 returnToSplitView 的 Exit 成对。
-            AmeGameLandscapeLockEnter();
-        }];
+
+        // ⚠️ 不再用 UIView 动画包着换根。
+        //
+        // 原实现是：
+        //     [UIView animateWithDuration:0.2 animations:^{ window.alpha = 0; }
+        //                       completion:^(BOOL b){ ...换根... }];
+        // SurfaceViewController 的 initWithMetadata 在 completion 里执行。
+        // 只要那个初始化里有任何阻塞（磁盘扫描、session 建立、信号安装），
+        // 主线程被占住，completion 就永远不会被回调 —— 表现就是
+        // 「点了启动，界面切到一半/不动，日志什么都没有」。
+        //
+        // 换根本身不需要动画：用户看到的是一个覆盖全屏的游戏宿主。
+        window.alpha = 1;
+        [window resignKeyWindow];
+        window.rootViewController = [[SurfaceViewController alloc] initWithMetadata:metadata];
+        [window makeKeyAndVisible];
+        AmeGameLandscapeLockEnter();
+
+        NSLog(@"[LAUNCH-PROBE] 根已换成 SurfaceViewController");
+        fprintf(stderr, "[LAUNCH-PROBE] 根已换成 SurfaceViewController\n");
+        fflush(stderr);
     });
 }
 
