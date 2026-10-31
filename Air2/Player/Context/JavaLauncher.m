@@ -1301,6 +1301,16 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
     // 而非 TXM 固件检测，确保 iOS 26+ 无 TXM 设备也能正确设置 JIT 脚本
     DeviceGetJITFlags(YES);
     BOOL requiresDebugJITMapping = DeviceNeedsDebugJITMapping();
+
+    // 越狱且原生 JIT 已验证可用 ⇒ 根本不需要 Debug JIT Mapping。
+    // DeviceNeedsDebugJITMapping() 只看 iOS 26 / FORCE_MIRRORED 两个 flag，
+    // 不知道越狱机已经能自建 RX 映射 —— 不在这里清掉，就会走进
+    // 「新建 JIT 区 → 失败 → 调外部工具 → 超时 → 放弃启动」那条路。
+    if (requiresDebugJITMapping && AMEJailbreakNativeJITPathApplies()
+        && AMEJailbreakNativeJITReady()) {
+        NSLog(@"[JB-ADAPT] jailbreak native JIT ready -- clearing requiresDebugJITMapping");
+        requiresDebugJITMapping = NO;
+    }
     // ★ [JB-ADAPT] 越狱环境可见性：越狱且原生可建 RX 映射 ⇒ requiresDebugJITMapping 为假，
     //   本路径不做 brk #0x69、不请求任何外部 JIT 工具（真能力由 DeviceCanCreateRXMap 说话）。
     if (AMEJailbreakNativeJITPathApplies()) {
@@ -1347,9 +1357,25 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
             //    JIT),以及调试器仍在岗(ptrace / 任务级异常端口)。
             //    若这次直接重试仍失败 ⇒ 说明只是粘滞的 CS_DEBUGGED 残留(调试器已离场),
             //    下面照常调起使能工具并等待,不把这类用户挡在开始之前。
+            // ⚠️ 越狱原生 JIT 必须算作「已就绪」。
+            //
+            // 越狱机的 JIT 是通过内核补丁直接放开 mmap(PROT_EXEC) 的：
+            //   · isJITEnabled(NO) 只认 dynamic-codesigning entitlement → 为 NO
+            //   · JIT26IsLikelyDebuggerKeepAttached() 只认调试器在岗 → 为 NO
+            //   · no-sandbox entitlement 侧载 App 通常也没有 → 为 NO
+            //
+            // 三个都不成立，于是这里判定「没就绪」→ 去调外部 JIT 工具
+            // → 用户手上没有（或工具没响应）→ 等待超时 → 放弃启动。
+            //
+            // 越狱机的真实能力由 AMEJailbreakNativeJITReady() 说话
+            // （内部是 DeviceCanCreateRXMap：申请一块匿名页并 mprotect(RX)，
+            //   成功才算真的有 JIT）。
+            BOOL ameJBReady = AMEJailbreakNativeJITPathApplies()
+                           && AMEJailbreakNativeJITReady();
             BOOL ameAlreadyReady = isJITEnabled(NO)
                 || JIT26IsLikelyDebuggerKeepAttached()
-                || getEntitlementValue(@"com.apple.private.security.no-sandbox");
+                || getEntitlementValue(@"com.apple.private.security.no-sandbox")
+                || ameJBReady;
             if (ameAlreadyReady) {
                 NSLog(@"[JIT-WAIT] JIT already reports ready (isJITEnabled=%d keepAttached=%d) -- retrying region without launching any enabler",
                       isJITEnabled(NO), JIT26IsLikelyDebuggerKeepAttached());

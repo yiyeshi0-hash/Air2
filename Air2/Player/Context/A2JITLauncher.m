@@ -66,8 +66,12 @@
 
     // ---- 放行条件 ----
     if (jit || native) {
-        // CS_DEBUGGED 可能粘滞（调试器早已脱离），做一次真自检
-        if (DeviceNeedsDebugJITMapping() && !AMEJITVerifyWritableJITRegion()) {
+        // CS_DEBUGGED 可能粘滞（调试器早已脱离），做一次真自检。
+        //
+        // ⚠️ 越狱原生 JIT 已验证可用时跳过自检 ——
+        // DeviceNeedsDebugJITMapping() 只看 iOS 26 / FORCE_MIRRORED 两个 flag，
+        // 不知道越狱机能自建 RX 映射；拿它去卡越狱机会误杀。
+        if (!native && DeviceNeedsDebugJITMapping() && !AMEJITVerifyWritableJITRegion()) {
             [A2Logger warning:@"JIT" message:@"声明可用但自检失败，尝试重挂调试器"];
             [self presentUnavailableIn:host
                                  title:@"JIT 未真正就绪"

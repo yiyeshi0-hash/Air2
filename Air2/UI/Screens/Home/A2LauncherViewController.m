@@ -52,6 +52,7 @@
 #import "A2Toast.h"
 #import "A2NavigationController.h"
 #import "A2VersionManager.h"
+#import "A2VersionIsolation.h"
 #import "A2AccountManager.h"
 #import "A2Account.h"
 #import "A2VersionSettingsViewController.h"
@@ -754,6 +755,67 @@
 
 #pragma mark - 动作与导航
 
+/// 启动前的关键文件检查。
+///
+/// 为什么需要：A2Version.isValid 只判 json 与 jar 存在，
+/// 但启动 MC 还需要 libraries/ 与 assets/objects/。
+/// 两者缺失时 isValid 仍是 YES，启动流程照跑，
+/// JVM 起来后找不到类/资源 —— 表现就是「界面出来了但画面永远不出」。
+///
+/// 路径一律走 A2GamePath（项目里唯一出口），不手写字符串拼接。
+- (BOOL)versionHasEssentialFiles:(A2Version *)version {
+    A2GamePath *path = [A2GamePath pathWithGameHome:A2VersionManager.shared.gameHome];
+    NSFileManager *fm = NSFileManager.defaultManager;
+
+    // 1. 客户端 jar
+    NSString *jar = [path versionJarPath:version.name];
+    NSDictionary *jarAttr = [fm attributesOfItemAtPath:jar error:nil];
+    if (!jarAttr || [jarAttr[NSFileSize] longLongValue] <= 0) {
+        [self presentNotReadyWithTitle:@"版本还没装好"
+                               message:@"客户端 jar 不完整。\n\n请先完成下载安装，再启动游戏。"];
+        return NO;
+    }
+
+    // 2. 依赖库：MC 26.x 需要 50+ 个 jar
+    NSString *libsDir = [path librariesHome];
+    NSArray<NSString *> *libs = [fm contentsOfDirectoryAtPath:libsDir error:nil];
+    NSUInteger jarCount = 0;
+    for (NSString *f in libs) {
+        if ([f hasSuffix:@".jar"]) jarCount++;
+    }
+    if (jarCount < 10) {
+        [self presentNotReadyWithTitle:@"依赖库还没下载完"
+                               message:[NSString stringWithFormat:
+                                        @"libraries/ 里只有 %lu 个 jar，正常需要 50 个以上。\n\n"
+                                        @"请等安装完成后再启动。", (unsigned long)jarCount]];
+        return NO;
+    }
+
+    // 3. 资源：assets/objects/<前两位哈希>/ 桶目录
+    NSString *objectsDir = [path assetsObjectsHome];
+    NSArray<NSString *> *buckets = [fm contentsOfDirectoryAtPath:objectsDir error:nil];
+    if (buckets.count < 16) {
+        [self presentNotReadyWithTitle:@"游戏资源还没下载完"
+                               message:[NSString stringWithFormat:
+                                        @"assets/objects/ 里只有 %lu 个桶目录，正常是 256 个。\n\n"
+                                        @"资源文件通常有 3000+ 个，请等安装完成后再启动。",
+                                        (unsigned long)buckets.count]];
+        return NO;
+    }
+
+    return YES;
+}
+
+- (void)presentNotReadyWithTitle:(NSString *)title message:(NSString *)message {
+    [A2Dialog showInView:self.view
+                   title:title
+                 message:message
+                 actions:@[
+        [A2DialogAction actionWithTitle:@"知道了"
+                                   style:A2DialogActionStyleFilled handler:nil],
+    ]];
+}
+
 - (void)launchGame {
     // 当前选中的版本
     A2Version *current = A2VersionManager.shared.currentVersion;
@@ -764,6 +826,24 @@
     if (!current.isValid) {
         [A2Toast show:@"该版本不完整，请重新安装" inView:self.view];
         return;
+    }
+
+    // ---- 启动前的「关键文件」硬检查 ----
+    //
+    // A2Version.isValid 只判断：版本 json 存在 + 客户端 jar 存在。
+    // 但启动 MC 还需要：
+    //   · libraries/ 下的依赖库（缺一个就是 NoClassDefFoundError）
+    //   · assets/ 下的资源（缺了标题界面都进不去）
+    //   · natives/ 或 Frameworks/ 里的原生库
+    //
+    // 之前的后果：安装还在下载资源时点启动，isValid 已经返回 YES，
+    // 于是启动流程照跑 —— JVM 起来后找不到类/资源，表现为
+    // 「控件层出来了但画面永远不出来，内存 24MB」。
+    //
+    // 注意：即使开了「跳过完整性检查」，这条也要走 ——
+    // 那个开关是给「跳过 SHA1 校验」用的，不是「允许在缺文件时启动」。
+    if (![self versionHasEssentialFiles:current]) {
+        return;   // 方法内部已弹提示
     }
 
     _launchButton.loading = YES;
