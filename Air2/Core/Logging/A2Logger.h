@@ -94,6 +94,19 @@ FOUNDATION_EXPORT NSString *A2LogLevelName(A2LogLevel level);
 /// 日志保留天数（默认 7，写入时持久化）
 @property (nonatomic, assign) NSInteger retentionDays;
 
+
+/// 当前日志文件的绝对路径（供 stderr 重定向使用）。
+/// 未初始化或建文件失败时为 nil。
++ (nullable NSString *)logFilePath;
+
+/// 把 stderr 重定向到当前日志文件。
+///
+/// pojav 后端（SurfaceViewController / JavaLauncher / nslog）大量使用
+/// NSLog，而 NSLog 只写系统 unified log，不进我们的日志文件 ——
+/// 于是「启动后黑屏」时日志永远停在最后一个 A2Log 行，看不到任何
+/// JVM 侧输出。调用一次即可（重复调用无副作用）。
++ (void)redirectStderrToLogFile;
+
 @end
 
 NS_ASSUME_NONNULL_END

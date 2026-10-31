@@ -26,6 +26,11 @@
 //
 
 #import "A2Logger.h"
+#import <stdio.h>
+#import <string.h>
+#import <errno.h>
+#import <unistd.h>
+#import <fcntl.h>
 #import <UIKit/UIKit.h>
 #import <os/log.h>
 
@@ -364,6 +369,43 @@ NSString *A2LogLevelName(A2LogLevel level) {
         [self writeLine:[NSString stringWithFormat:@"[A2Logger] 日志已导出到 %@\n", textPath]];
     }
     return ok;
+}
+
+
+#pragma mark - stderr 重定向
+
++ (NSString *)logFilePath {
+    return [self shared].currentLogFilePath;
+}
+
++ (void)redirectStderrToLogFile {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *path = [self logFilePath];
+        if (path.length == 0) {
+            NSLog(@"[A2Logger] 没有日志文件，stderr 重定向跳过");
+            return;
+        }
+
+        // 追加模式：不改动已有内容
+        int fd = open(path.fileSystemRepresentation, O_WRONLY | O_APPEND | O_CREAT, 0644);
+        if (fd < 0) {
+            NSLog(@"[A2Logger] 打开日志文件失败：%s", strerror(errno));
+            return;
+        }
+
+        // dup2 到 stdout / stderr —— JVM、JNI、pojav 原生层的 printf/NSLog
+        // 之后都会进同一个文件
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        if (fd > STDERR_FILENO) close(fd);
+
+        // 关闭行缓冲，崩溃前最后几行也能留下
+        setvbuf(stdout, NULL, _IONBF, 0);
+        setvbuf(stderr, NULL, _IONBF, 0);
+
+        fprintf(stderr, "\n===== stderr 已重定向到日志文件 =====\n");
+    });
 }
 
 @end

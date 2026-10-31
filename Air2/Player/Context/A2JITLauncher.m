@@ -81,6 +81,44 @@
         return;
     }
 
+    // ---- TrollStore：用 apple-magnifier:// 启用 JIT ----
+    //
+    // user 装的就是 JIT Lite / TrollStore，视频里能看到它的
+    // 「以 JIT 模式打开」界面。TrollStore 通过这个 URL Scheme
+    // 给指定 bundle 授予 JIT，之后本进程才能创建可执行内存。
+    if (isTrollStoreInstall()) {
+        NSString *bid = NSBundle.mainBundle.bundleIdentifier ?: @"";
+        NSURL *jitURL = [NSURL URLWithString:
+                         [NSString stringWithFormat:
+                          @"apple-magnifier://enable-jit?bundle-id=%@", bid]];
+        [A2Logger info:@"JIT" message:[NSString stringWithFormat:
+                 @"TrollStore 环境，唤起 JIT：%@", jitURL.absoluteString]];
+
+        [UIApplication.sharedApplication openURL:jitURL options:@{}
+                               completionHandler:^(BOOL ok) {
+            [A2Logger info:@"JIT"
+                   message:[NSString stringWithFormat:@"openURL apple-magnifier:// -> %d", ok]];
+
+            if (!ok) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self presentUnavailableIn:host
+                                         title:@"TrollStore 未响应"
+                                       message:@"apple-magnifier:// 没有被处理。\n\n"
+                                                @"· 确认 TrollStore 已安装并且版本足够新\n"
+                                                @"· 在 TrollStore 设置里开启 URL Scheme\n"
+                                                @"· 或改用 StikDebug 等其他 JIT 工具"];
+                });
+                return;
+            }
+
+            // 唤起成功 → 等待 JIT 真正可用
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self waitForJITWithDeadline:60 attempt:0 host:host onReady:handler];
+            });
+        }];
+        return;
+    }
+
     // ---- 有外部使能器：唤起并等待 ----
     if (hasEnabler) {
         NSString *name = AMEJITConfiguredEnablerDisplayName() ?: @"JIT 工具";
@@ -102,6 +140,15 @@
                              attempt:0
                                 host:weakHost
                              onReady:handler];
+        return;
+    }
+
+    // ---- 调试开关：强制跳过 JIT 等待（明知会卡，但可用于排障）----
+    if ([A2Settings.shared boolForKey:@"debug_skip_wait_jit"]) {
+        [A2Logger warning:@"JIT" message:@"debug_skip_wait_jit=1，跳过 JIT 门禁（游戏大概率卡死）"];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (handler) handler();
+        });
         return;
     }
 
