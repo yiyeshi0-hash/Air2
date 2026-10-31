@@ -1268,6 +1268,9 @@ static void ame99_installAppKitMenuStubs(void) {
 }
 
 int launchJVM(NSString *accountId, id launchTarget, int width, int height, int minVersion) {
+    fprintf(stderr, "\n[LAUNCH-PROBE] === launchJVM ENTER account=%s minJava=%d size=%dx%d ===\n",
+            accountId.UTF8String, minVersion, width, height);
+    fflush(stderr);
     NSLog(@"[JavaLauncher] Beginning JVM launch");
     // ★ [LAUNCH-PROGRESS] 阶段1/8：准备环境(默认环境/自定义环境变量/崩溃捕获武装…)
     AmeLaunchProgressSetStage(AmeLaunchStagePrepareEnv);
@@ -1280,6 +1283,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
         showDialog(localize(@"Error", nil),
             @"A Java runtime was used by the mod installer in this session. "
             @"Please restart the launcher, then launch the game again.");
+        fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 1283\n"); fflush(stderr);
         return 1;
     }
 
@@ -1334,6 +1338,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
                 NSLog(@"[JIT-WAIT] debug_skip_wait_jit set -- keeping legacy behavior (request JIT, no wait/retry)");
                 ame139_requestJIT(NO);
                 [PLLogOutputView handleExitCode:1];
+                fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 1337\n"); fflush(stderr);
                 return 1;
             }
 
@@ -1382,6 +1387,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
                         ameJIT2_bgt = UIBackgroundTaskInvalid;
                     }
                     [PLLogOutputView handleExitCode:1];
+                    fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 1385\n"); fflush(stderr);
                     return 1;
                 }
                 ameWaitedForJIT = YES;
@@ -1417,6 +1423,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
                     showDialog(localize(@"jit.wait.abort.title", nil), localize(@"jit.wait.blocked.message", nil));
                 }
                 [PLLogOutputView handleExitCode:1];
+                fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 1420\n"); fflush(stderr);
                 return 1;
             }
         }
@@ -1432,12 +1439,14 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
                 if([lcAppInfo writeToFile:lcAppInfoPath atomically:YES]) {
                     showDialog(localize(@"Error", nil), @"Amethyst was launched with a legacy script. We have updated the script to Universal, please restart LiveContainer to continue.");
                     [PLLogOutputView handleExitCode:1];
+                    fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 1435\n"); fflush(stderr);
                     return 1;
                 }
             }
             [NSFileManager.defaultManager copyItemAtPath:inBundleScriptPath toPath:[NSString stringWithFormat:@"%s/UniversalJIT26.js", getenv("POJAV_HOME")] error:nil];
             showDialog(localize(@"Error", nil), @"Support for legacy script has been removed. Please switch to Universal JIT script. To import it, long-press on Amethyst when enabling JIT in StikDebug and tap \"Assign Script\", then go to Amethyst's Documents directory and pick it. (on sideloaded StikDebug, the builtin script is named Amethyst-MeloNX.js)");
             [PLLogOutputView handleExitCode:1];
+            fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 1441\n"); fflush(stderr);
             return 1;
         }
         // ★ [JIT-NOCRASH] 下发脚本 / 设置脱离均靠调试器服务 brk #0xf00d；裸调用在
@@ -1787,6 +1796,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
         BOOL isExecuteJar = [defaultJRETag isEqualToString:@"execute_jar"];
         showDialog(localize(@"Error", nil), [NSString stringWithFormat:localize(@"java.error.missing_runtime", nil),
             isExecuteJar ? [launchTarget lastPathComponent] : PLProfiles.current.selectedProfile[@"lastVersionId"], minVersion]);
+        fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 1790\n"); fflush(stderr);
         return 1;
     } else if ([javaHome hasPrefix:([NSString stringWithUTF8String:(getenv("POJAV_HOME") ?: "")] ?: @"")]) {
         // Symlink libawt_xawt.dylib
@@ -1829,6 +1839,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
         } else {
             showDialog(localize(@"Error", nil), @"Insufficient contiguous virtual memory space. Increased Memory Limit entitlement is missing, please add it via GetMoreRam app.");
         }
+        fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 1832\n"); fflush(stderr);
         return 1;
     }
 
@@ -2306,13 +2317,18 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
     PUSH_MARGV_LITERAL("-XX:SoftRefLRUPolicyMSPerMB=250");
 
     setenv("INTERNAL_JLI_PATH", (isJava8 ? libjlipath8 : libjlipath11).UTF8String, 1);
+    fprintf(stderr, "[LAUNCH-PROBE] JLI path = %s\n", getenv("INTERNAL_JLI_PATH"));
+    fflush(stderr);
     void* libjli = dlopen(getenv("INTERNAL_JLI_PATH"), RTLD_GLOBAL);
 
     if (!libjli) {
         const char *error = dlerror();
+        fprintf(stderr, "[LAUNCH-PROBE] dlopen FAILED: %s\n", error ?: "(null)");
+        fflush(stderr);
         NSLog(@"[Init] JLI lib = NULL: %s", error);
         UIKit_returnToSplitView();
         showDialog(localize(@"Error", nil), @(error));
+        fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 2316\n"); fflush(stderr);
         return 1;
     }
 
@@ -2555,6 +2571,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
     if (![fm fileExistsAtPath:lwjglDir isDirectory:&lwjglDirIsDir] || !lwjglDirIsDir) {
         UIKit_returnToSplitView();
         showDialog(localize(@"Error", nil), [NSString stringWithFormat:@"LWJGL jar missing: lwjgl-%@/lwjgl.jar", lwjglVersion]);
+        fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN 1 @ line 2558\n"); fflush(stderr);
         return 1;
     }
     NSString *lwjglJar = [NSString stringWithFormat:@"%@/*", lwjglDir];
@@ -2603,6 +2620,7 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
 
     if (NULL == pJLI_Launch) {
         NSLog(@"[Init] JLI_Launch = NULL");
+        fprintf(stderr, "[LAUNCH-PROBE] launchJVM RETURN -2 @ line 2606\n"); fflush(stderr);
         return -2;
     }
 

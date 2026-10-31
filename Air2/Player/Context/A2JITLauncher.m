@@ -81,6 +81,28 @@
         return;
     }
 
+    // ---- 越狱环境：一律放行，不再拦截 ----
+    //
+    // 用户是越狱机。isJITEnabled() 只认 dynamic-codesigning entitlement
+    // 和 CS_DEBUGGED 两个标记 —— 越狱机的 JIT 是通过 patchfinder /
+    // 内核补丁直接放开 mmap(PROT_EXEC) 的，这两个标记都不会置位。
+    //
+    // 结果就是：明明有 JIT，门禁却判定「无 JIT」→ 弹 TrollStore 界面
+    // → 等待 60 秒超时 → handler 永不执行 → 游戏根本没启动。
+    //
+    // 越狱环境下 JIT 的实际可用性由 AMEJailbreakNativeJITReady() 判断，
+    // 但即使它探测失败（部分越狱的 RX 映射被限制），也不该拦死 ——
+    // Air1 的注释也写了「不把『越狱但本 App 未开 JIT』的用户挡死」。
+    if (jbPath) {
+        [A2Logger info:@"JIT" message:[NSString stringWithFormat:
+                 @"越狱环境（%@），放行启动（nativeReady=%d, isJIT=%d）",
+                 AMEJailbreakEnvSummary(), native, jit]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (handler) handler();
+        });
+        return;
+    }
+
     // ---- TrollStore：用 apple-magnifier:// 启用 JIT ----
     //
     // user 装的就是 JIT Lite / TrollStore，视频里能看到它的

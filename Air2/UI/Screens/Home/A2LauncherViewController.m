@@ -906,9 +906,15 @@
         // Air1 在 LauncherRightPanelViewController:1406 用的就是这个门禁。
         NSDictionary *finalMeta = [metadata copy];
 
-        // 检查通过 → 直接切到 JVMScreen（ZL2 也是这样，没有额外过渡）
-        {
-            __strong typeof(weakSelf) self = weakSelf;
+        // ---- JIT 门禁 → 通过后才切 JVMScreen 并拉起Surface ----
+        //
+        // 之前 JVMScreen 是在门禁【之前】添加的：门禁一旦拦住，
+        // 用户看到的就是一个「控件层 + 黑屏」的假界面，
+        // 而 launchJVM 从未执行（内存只有 20MB 就是铁证）。
+        // 现在把两步都放进 onReady，没通过就什么都不发生（只弹提示）。
+        __weak typeof(self) weakSelf2 = weakSelf;
+        [A2JITLauncher gatedByJITInViewController:self onReady:^{
+            __strong typeof(weakSelf2) self = weakSelf2;
             if (!self) return;
 
             A2JVMRunningViewController *jvm = [[A2JVMRunningViewController alloc] init];
@@ -919,9 +925,7 @@
             [self addChildViewController:jvm];
             [jvm didMoveToParentViewController:self];
             self.jvmScreen = jvm;
-        }
 
-        [A2JITLauncher gatedByJITInViewController:self onReady:^{
             UIKit_launchMinecraftSurfaceVC(window, finalMeta);
         }];
         });   // dispatch_async(main)

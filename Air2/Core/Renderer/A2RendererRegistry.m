@@ -165,6 +165,24 @@ static NSString *const kSelectedRendererKey = @"A2SelectedRendererID";
           "离屏渲染 + SDL3 呈现，兼容性兜底", "1.7" },
         { "builtin.virgl",    "VirGL",    "libvirgl_test_server.dylib", NULL,
           "虚拟化 GL，适合调试", "1.7" },
+
+        // ---- 以下为 Air1 有、之前漏列的渲染器 ----
+        { "builtin.mobileglues", "MobileGlues", "libmobileglues.dylib", NULL,
+          "GL-on-Metal/Vulkan 转译，26.x 兼容性好", "1.17" },
+        { "builtin.mobilegl_gles", "MobileGL (GLES)", "libMobileGL-gles.dylib", NULL,
+          "MobileGL 的 GLES 后端", "1.17" },
+        { "builtin.angle",    "ANGLE",    "libtinygl4angle.dylib", NULL,
+          "Google ANGLE，GLES over Metal", "1.17" },
+        { "builtin.metallum", "Metallum", "libmetallum.dylib", NULL,
+          "原生 Metal 后端（agent 注入）", "26.2" },
+        { "builtin.metallum_iris", "Metallum (Iris)", "libmetallum_iris.dylib", NULL,
+          "Metallum + Iris 光影支持", "26.2" },
+        { "builtin.mithril",  "Mithril",  "libmithril.dylib", NULL,
+          "轻量 GL 后端", "1.17" },
+        { "builtin.ltw",      "LTW",      "libltw.dylib", NULL,
+          "GL 3.3 over GLES 3.0（26.x 云管线不支持）", "1.17" },
+        { "builtin.sfpew",    "SFPEW",    "libSimpleFPEWrapper.dylib", NULL,
+          "固定管线包装，适配 <=1.16", "1.7" },
     };
 
     for (size_t i = 0; i < sizeof(builtins) / sizeof(builtins[0]); i++) {

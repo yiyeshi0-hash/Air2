@@ -379,33 +379,52 @@ NSString *A2LogLevelName(A2LogLevel level) {
 }
 
 + (void)redirectStderrToLogFile {
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        NSString *path = [self logFilePath];
-        if (path.length == 0) {
-            NSLog(@"[A2Logger] 没有日志文件，stderr 重定向跳过");
+    // ⚠️ 不能「试一次就放弃」
+    //
+    // A2Logger.initialize 里 setupLogFile 是 dispatch_async 到写队列上的，
+    // 所以主线程第一次调用本方法时 currentLogFilePath 往往还是 nil。
+    // 之前的写法在这里直接 return，然后 dispatch_once 把「失败」也记住了，
+    // 于是 stderr 永远没被重定向 —— 日志当然只剩 A2Log 那几行。
+    //
+    // 现在：拿不到路径就重试（最多 50 次 × 20ms ≈ 1 秒），
+    // 拿到后立刻做 dup2，并用静态标志防止重复重定向。
+
+    static BOOL done = NO;
+    if (done) return;
+
+    NSString *path = [self logFilePath];
+
+    if (path.length == 0) {
+        static NSInteger tries = 0;
+        if (tries++ >= 50) {
+            NSLog(@"[A2Logger] 等不到日志文件路径，stderr 重定向放弃");
+            done = YES;   // 放弃，避免无限重试
             return;
         }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.02 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            [self redirectStderrToLogFile];
+        });
+        return;
+    }
 
-        // 追加模式：不改动已有内容
-        int fd = open(path.fileSystemRepresentation, O_WRONLY | O_APPEND | O_CREAT, 0644);
-        if (fd < 0) {
-            NSLog(@"[A2Logger] 打开日志文件失败：%s", strerror(errno));
-            return;
-        }
+    done = YES;
 
-        // dup2 到 stdout / stderr —— JVM、JNI、pojav 原生层的 printf/NSLog
-        // 之后都会进同一个文件
-        dup2(fd, STDOUT_FILENO);
-        dup2(fd, STDERR_FILENO);
-        if (fd > STDERR_FILENO) close(fd);
+    int fd = open(path.fileSystemRepresentation, O_WRONLY | O_APPEND | O_CREAT, 0644);
+    if (fd < 0) {
+        NSLog(@"[A2Logger] 打开日志文件失败：%s", strerror(errno));
+        return;
+    }
 
-        // 关闭行缓冲，崩溃前最后几行也能留下
-        setvbuf(stdout, NULL, _IONBF, 0);
-        setvbuf(stderr, NULL, _IONBF, 0);
+    dup2(fd, STDOUT_FILENO);
+    dup2(fd, STDERR_FILENO);
+    if (fd > STDERR_FILENO) close(fd);
 
-        fprintf(stderr, "\n===== stderr 已重定向到日志文件 =====\n");
-    });
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
+    fprintf(stderr, "\n===== stderr/stdout 已重定向到日志文件：%s =====\n",
+            path.lastPathComponent.UTF8String);
 }
 
 @end

@@ -54,6 +54,7 @@
 #import "A2RendererRegistry.h"
 #import "A2RendererPlugin.h"
 #import "A2RendererImporter.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import "A2RendererPluginViewController.h"
 #import "A2GlassCard.h"
 #import "A2SettingsSection.h"
@@ -215,7 +216,98 @@
         [self addSection:cfg];
     }
 
+    // ---- 插件管理：导入 / 管理已导入的渲染器 ----
+    //
+    // 之前这里什么都没有 —— A2RendererImporter 与
+    // A2RendererPluginViewController 只被 import，全树没有调用点，
+    // 用户根本找不到导入入口。
+    {
+        A2SettingsSection *plugins = [[A2SettingsSection alloc] initWithTitle:@"渲染器插件"];
+        plugins.footerText = @"从文件导入第三方渲染器（.zip 或 .dylib）。"
+                              "导入后会出现在上面的可选列表里，标记为「来自插件」。";
+
+        A2SettingsRow *importRow = [[A2SettingsRow alloc] init];
+        importRow.symbolName = @"square.and.arrow.down";
+        importRow.title = @"导入渲染器";
+        importRow.subtitle = @"选择一个 .zip 或 .dylib 文件";
+        importRow.accessory = A2SettingsRowAccessoryDisclosure;
+        __weak typeof(self) weakSelf2 = self;
+        importRow.onTap = ^{
+            __strong typeof(weakSelf2) self = weakSelf2;
+            [self presentImportPicker];
+        };
+        [plugins addRow:importRow];
+
+        A2SettingsRow *manageRow = [[A2SettingsRow alloc] init];
+        manageRow.symbolName = @"shippingbox";
+        manageRow.title = @"管理已导入的渲染器";
+        manageRow.accessory = A2SettingsRowAccessoryDisclosure;
+        manageRow.showsSeparator = NO;
+        manageRow.onTap = ^{
+            __strong typeof(weakSelf2) self = weakSelf2;
+            A2RendererPluginViewController *vc =
+                [[A2RendererPluginViewController alloc] init];
+            [self.navigationController pushViewController:vc animated:YES];
+        };
+        [plugins addRow:manageRow];
+
+        [self addSection:plugins];
+    }
+
     [self refreshCurrentRow];
+}
+
+/// 弹出文件选择器导入渲染器
+- (void)presentImportPicker {
+    UIDocumentPickerViewController *picker =
+        [[UIDocumentPickerViewController alloc]
+         initForOpeningContentTypes:@[ UTTypeZIP, UTTypeData ]
+                           asCopy:YES];
+    picker.delegate = self;
+    picker.allowsMultipleSelection = NO;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+#pragma mark - UIDocumentPickerDelegate
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller
+didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    NSURL *url = urls.firstObject;
+    if (!url) return;
+
+    // 复制到沙盒（系统给的 URL 在 App 外，需要 security-scoped 访问）
+    NSURL *tmp = [NSURL fileURLWithPath:
+                  [NSTemporaryDirectory() stringByAppendingPathComponent:url.lastPathComponent]];
+    [NSFileManager.defaultManager removeItemAtURL:tmp error:nil];
+    NSError *copyErr = nil;
+    [NSFileManager.defaultManager copyItemAtURL:url toURL:tmp error:&copyErr];
+    if (copyErr) {
+        [A2Toast show:[NSString stringWithFormat:@"无法读取文件：%@",
+                        copyErr.localizedDescription] inView:self.view];
+        return;
+    }
+
+    [A2Toast show:@"正在导入…" inView:self.view];
+
+    __weak typeof(self) weakSelf = self;
+    [[A2RendererImporter shared] importPluginAtPath:tmp.path
+                                           progress:^(double p, NSString *msg) {
+        // 进度暂不展示，导入通常很快
+    } completion:^(A2RendererImportResult *result) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        if (result.success) {
+            NSString *name = result.plugin.displayName ?: @"渲染器";
+            NSString *msg = result.replacedExisting
+                ? [NSString stringWithFormat:@"已更新 %@", name]
+                : [NSString stringWithFormat:@"已导入 %@", name];
+            [A2Toast show:msg inView:self.view];
+            [self onPluginsChanged];
+        } else {
+            [A2Toast show:[NSString stringWithFormat:@"导入失败：%@",
+                            result.errorMessage ?: @"未知错误"] inView:self.view];
+        }
+    }];
 }
 
 /// 展开容器：描述头 + 可选列表

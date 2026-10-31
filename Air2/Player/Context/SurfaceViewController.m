@@ -23,6 +23,8 @@
 #import <AVFoundation/AVFoundation.h>
 #import <GameController/GameController.h>
 #import <objc/runtime.h>
+#import <pthread.h>
+#import <stdio.h>
 
 #import "ControllerInput.h"
 #import "GyroInput.h"
@@ -1753,6 +1755,12 @@ static int A2RequiredJavaVersionForMCVersion(NSString *verName) {
 }
 
 - (void)launchMinecraft {
+    // ★ 最原始的探针：直接 fprintf 到 stderr，不经过 A2Logger。
+    //   如果连这行都看不到，说明这个方法压根没被调用。
+    fprintf(stderr, "\n[LAUNCH-PROBE] launchMinecraft ENTERED tid=%d\n",
+            (int)pthread_self());
+    fflush(stderr);
+
     [A2Logger info:@"GameLaunch" message:@"[1] launchMinecraft 开始"];
 
     // ★ JIT 状态 —— 没有 JIT 时 HotSpot 用解释器跑 MC，表现就是「卡死」
@@ -1775,6 +1783,10 @@ static int A2RequiredJavaVersionForMCVersion(NSString *verName) {
             @"     javaHome(metadata)=%@", self.metadata[@"javaHome"] ?: @"(nil)"]];
     }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        fprintf(stderr, "[LAUNCH-PROBE] 后台队列开始，metadata=%s\n",
+                self.metadata ? "有" : "nil");
+        fflush(stderr);
+
         // Validate metadata first
         if (!self.metadata) {
             NSLog(@"[SurfaceViewController] Error: metadata is nil");
