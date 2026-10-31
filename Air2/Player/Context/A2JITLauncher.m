@@ -144,7 +144,7 @@
     }
 
     // ---- 调试开关：强制跳过 JIT 等待（明知会卡，但可用于排障）----
-    if ([A2Settings.shared boolForKey:@"debug_skip_wait_jit"]) {
+    if ([A2Settings.shared boolForKey:@"debug_skip_wait_jit" default:NO]) {
         [A2Logger warning:@"JIT" message:@"debug_skip_wait_jit=1，跳过 JIT 门禁（游戏大概率卡死）"];
         dispatch_async(dispatch_get_main_queue(), ^{
             if (handler) handler();
